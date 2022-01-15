@@ -714,19 +714,49 @@ killings['unarmed'].unique()
 killings['unarmed'] = killings['unarmed'].str.lower()
 
 # %% [markdown]
-# ### Alleged Weapon - need to do
+# ### Alleged Weapon - In Progress
+# I'll distill down some of the repeats here, but I may want to come back to this later and distill things further down.  Some ideas:
+# - [ ] Gun category
+# - [ ] Tool category
+# - [ ] Baseball bat category
+# - [ ] Knife category
+# - [ ] Toy category
+# - [ ] Metal object category
+# - [ ] Sharp object category
 
 # %%
-killings['alleged_weapon'].unique()
+killings['alleged_weapon'].sort_values().unique()
 
 # %%
 killings['alleged_weapon'] = killings['alleged_weapon'].str.lower()
 
 # %%
+killings['alleged_weapon'] = killings['alleged_weapon'].str.rstrip()
+
+# %%
 alleged_weapon_dict = {"unclear":"unknown",
                        "unknown weapon":"unknown",
                        "undetermined":"unknown",
-                       }
+                       "unknown object":"unknown",
+                       "air pistol":"airsoft pistol",
+                       "knife and gun":"gun and knife",
+                       "ax":"axe",
+                       "chain saw":"chainsaw",
+                       "flag pole":"flagpole",
+                       "gun and knives":"gun and knife",
+                       "gun and car":"gun and vehicle",
+                       "gun, vehicle":"gun and vehicle",
+                       "guns":"gun",
+                       "knives":"knife",
+                       "rocks":"rock",
+                       "screw driver":"screwdriver",
+                       "sticks":"stick",
+                       "unclear weapon":"unknown",
+                       "wood stick":"wooden stick",
+                       "bat":"baseball bat",
+                       "blunt weapon":"blunt object",
+                       "hammer and knife":"knife and hammer",
+                       "knife/scissors":"knife and scissors"}
 
 killings['alleged_weapon'] = killings['alleged_weapon'].map(alleged_weapon_dict).fillna(killings['alleged_weapon'])
 
@@ -793,92 +823,29 @@ killings["victims_age"] = killings["victims_age"].astype('float64')
 # %%
 killings["date"] = pd.to_datetime(killings["date"], infer_datetime_format=True)
 
-# %%
-killings.dtypes
-
-# %%
-
-# %%
-
-# %%
-killings.columns
-
-# %%
-
-# %%
-
-# %%
-killings['unarmed'].unique()
-
-# %%
-killings['alleged_weapon'].unique()
-
-# %%
-
-# %%
-zipcode_null = killings.loc[killings['Zipcode'].isnull()==True,:].index
-killings.drop(zipcode_null,inplace=True)
-
-# %%
-killings.isnull().sum()
-
-# %%
-killings.head()
-
-# %%
-
-# %%
-
-# %%
-killings.head()
+# %% [markdown]
+# # Saving work to CSV file
 
 # %%
 killings.to_csv('./csv_files/police_killings_clean.csv', index=False)
-
-# %%
-
-# %%
 
 # %% [markdown]
 # # Scratch Work
 
 # %%
-# This code will open all links so we can inspect them manually
-try:
-    for url in null_gender_urls:
-        webbrowser.open_new_tab(url)
-except:
-    pass
+# null_address_df = killings[(killings["street_address"].isnull() == True) & (killings["news_article_link"].isnull()==False)]
 
-# %%
-import urllib.request
+# null_address_links = null_address_df['news_article_link']
 
-def is_url_working(x):
-    import urllib.request
-    print('starting')
-    try:
-        test_url = urllib.request.urlopen(x)
-        return test_url
-    except:
-        return 'No'
-    
-# killings['URL working?'] = killings['Link to news article or photo of official document'].apply(is_url_working)
+# null_address_idx = null_address_links.index
+# null_address_urls = null_address_links.to_list()
 
-
-# %%
-null_address_df = killings[(killings["street_address"].isnull() == True) & (killings["news_article_link"].isnull()==False)]
-
-null_address_links = null_address_df['news_article_link']
-
-null_address_idx = null_address_links.index
-null_address_urls = null_address_links.to_list()
-
-print("Here are the links for news articles that contain links for rows with a null street_address:")
-print("-"*50)
-print()
-for idx, link in zip(null_address_idx[0:10], null_address_links[0:10]):
-    null_col_mask = killings.loc[idx].isna()==True
-    print(F"df_idx: {idx}")
-    print(killings.loc[idx, null_col_mask].to_string())
-    print(F"link: {link}")
-    print()
+# print("Here are the links for news articles that contain links for rows with a null street_address:")
+# print("-"*50)
+# print()
+# for idx, link in zip(null_address_idx[0:10], null_address_links[0:10]):
+#     null_col_mask = killings.loc[idx].isna()==True
+#     print(F"df_idx: {idx}")
+#     print(killings.loc[idx, null_col_mask].to_string())
+#     print(F"link: {link}")
+#     print()
