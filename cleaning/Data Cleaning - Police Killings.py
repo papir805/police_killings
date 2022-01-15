@@ -70,7 +70,7 @@ killings.rename(columns={
     'Alleged Weapon (Source: WaPo)':'alleged_weapon',
     'Alleged Threat Level (Source: WaPo)':'threat_level',
     'Fleeing (Source: WaPo)': 'fleeing',
-    'Body Camera (Source: WaPo)':'body_camera',
+    'Body Camera (Source: WaPo)':'video_surveillance',
     'WaPo ID (If included in WaPo database)':'WaPo_id',
     'Off-Duty Killing?':'off_duty_killing',
     'Geography (via Trulia methodology based on zipcode population density: http://jedkolko.com/wp-content/uploads/2015/05/full-ZCTA-urban-suburban-rural-classification.xlsx )':'geo_type',
@@ -98,39 +98,47 @@ killings.drop(['WaPo_id', 'off_duty_killing', 'ID'], axis=1, inplace=True)
 # %%
 killings.info()
 
-# %% [markdown]
-# ## Converting data types
-
-# %% [markdown]
-# ### Date Column
-
-# %% [markdown]
-# We can convert the dates in the date column to Python datetime objects
-
-# %%
-killings["date"] = pd.to_datetime(killings["date"], infer_datetime_format=True)
-
-# %%
-
-# %%
-
-# %%
-
 # %% [markdown] tags=[]
-# ## Handling Null values
+# ## Cleaning column by column
 
 # %% [markdown]
-# ### URL column
-
-# %% [markdown]
-# For rows that don't have a URL image of the victim, I'm going to impute "None"
+# ### Victim's name - splitting to first and last names
 
 # %%
-killings['victim_img_url'].fillna('None', inplace=True)
+names_without_police_in_them = killings.loc[killings['victims_name'].str.contains('police')==False, 'victims_name']
+
+killings['first_name'] = names_without_police_in_them.apply(lambda x: HumanName(x).first)
+
+killings['last_name'] = names_without_police_in_them.apply(lambda x: HumanName(x).last)
+
+# %%
+# killings[['First Name', 'Last Name']] = killings['victims_name'].loc[killings['victims_name'].str.split().str.len() == 2].str.split(expand=True)
+
+# killings.loc[killings['victims_name'].str.split().str.len() != 2, 'First Name'] = killings['victims_name'].str.split().str[0]
+# killings.loc[killings['victims_name'].str.split().str.len() != 2, 'Last Name'] = killings['victims_name'].apply(lambda x: HumanName(x).last)
+
+# killings.loc[killings['victims_name'] == 'Name withheld by police', ['First Name', 'Last Name']] = ['Unknown', 'Unknown']
+
+# killings[['First Name', 'Last Name']]
 
 # %% [markdown]
-# ### Gender
+# ### Victim's age
+
+# %%
+killings['victims_age'].unique()
+
+# %%
+killings.loc[killings["victims_age"]=='Unknown', "victims_age"] = np.nan
+
+# %%
+killings.loc[killings["victims_age"]=='40s', "victims_age"] = 40.0
+
+# %% [markdown]
+# ### Victim's gender
 # Let's try to determine what to do with the Null values for gender.  We'll begin by inspecting those that have a news article link present as that may have information we can use.
+
+# %%
+killings['victims_gender'].unique()
 
 # %%
 null_gender_df = killings[(killings["victims_gender"].isnull()==True) & (killings['news_article_link'].isnull()==False)]
@@ -158,15 +166,15 @@ for idx, link in zip(null_gender_idx, null_gender_links):
 
 # %%
 # news article says the victim was male, no age given
-killings.loc[13, 'victims_gender'] = 'Male'
+killings.loc[13, 'victims_gender'] = 'male'
 
 # %%
 # news article says the victim was male in his 40s
-killings.loc[112, ['victims_gender', 'victims_age']] = 'Male', '40'
+killings.loc[112, ['victims_gender', 'victims_age']] = 'male', '40'
 
 # %%
 # URL mentions male victim, but ad is behind paywall so can't investigate further
-killings.loc[1029, 'victims_gender'] = 'Male'
+killings.loc[1029, 'victims_gender'] = 'male'
 
 # %%
 killings.loc[774]
@@ -176,8 +184,8 @@ killings[(killings['victims_gender'].isnull()==True) & (killings['news_article_l
 
 # %%
 # Both names sound male, so I'll set the gender accordingly
-killings.loc[528, 'victims_gender'] = 'Male'
-killings.loc[774, 'victims_gender'] = 'Male'
+killings.loc[528, 'victims_gender'] = 'male'
+killings.loc[774, 'victims_gender'] = 'male'
 
 # %%
 num_null_gender = killings['victims_gender'].isnull().sum()
@@ -186,11 +194,38 @@ print(F"There are only {num_null_gender} rows with a null gender left, so we'll 
 killings['victims_gender'].fillna('Unknown', inplace=True)
 
 # %%
-
-# %%
+killings['victims_gender'] = killings['victims_gender'].str.lower()
 
 # %% [markdown]
-# ### City/County
+# ### Victim's race
+
+# %%
+killings['victims_race'].unique()
+
+# %%
+killings['victims_race'] = killings['victims_race'].str.lower()
+
+# %%
+killings.loc[killings["victims_race"] == 'unknown race', "victims_race"] = 'unknown'
+
+# %%
+killings.loc[killings["victims_race"]=='asian', "victims_race"] = 'asian/pacific islander'
+killings.loc[killings["victims_race"]=='pacific islander', "victims_race"] = 'asian/pacific islander'
+
+# %% [markdown]
+# ### Victim Image URL
+
+# %% [markdown]
+# For rows that don't have a URL image of the victim, I'm going to impute "None"
+
+# %%
+killings['victim_img_url'].fillna('None', inplace=True)
+
+# %% [markdown]
+# ### Location Data
+
+# %% [markdown]
+# #### City
 
 # %%
 killings.loc[killings['city'].isnull()==True,['city', 'state', 'zipcode']]
@@ -204,34 +239,7 @@ killings.loc[5561, 'city'] = "Jacksonville"
 killings.loc[6511, 'city'] = "Douglas"
 
 # %% [markdown]
-# #### not sure if I should keep this - BEGIN
-
-# %%
-null_city_df = killings.loc[killings['city'].isnull()==True,:]
-
-null_city_df
-
-# %%
-null_city_links = null_city_df['news_article_link']
-
-null_city_idx = null_city_links.index
-null_city_urls = null_city_links.to_list()
-
-print("Here are the links for news articles that contain links for rows with a null city:")
-print("-"*50)
-print()
-for idx, link in zip(null_city_idx[0:10], null_city_links[0:10]):
-    null_col_mask = killings.loc[idx].isna()==True
-    print(F"df_idx: {idx}")
-    print(killings.loc[idx, null_col_mask].to_string())
-    print(F"link: {link}")
-    print()
-
-# %% [markdown]
-# #### not sure if I should keep this END
-
-# %%
-killings.isnull().sum()
+# #### County
 
 # %%
 killings.loc[killings['county'].isnull()==True,['street_address', 'city', 'state', 'zipcode', 'county']]
@@ -257,37 +265,7 @@ killings.loc[1981,'county'] = 'Daviess'
 killings.loc[3315,'county'] = 'Lake'
 
 # %% [markdown]
-# ### Description of Circumstances Surrounding Death
-# It'll take too much time to research these missing entries and I don't think they'll contribute much to analysis, so I'll fill them with "Unavailable"
-
-# %%
-killings['desc_of_circumstances'].fillna('Unavailable', inplace=True)
-
-# %% [markdown]
-# ### News Article Link
-# It's going to be near impossible to research links for these rows, so we'll also fill them with "Unavailable"
-
-# %%
-killings['news_article_link'].fillna('Unavailable', inplace=True)
-
-# %% [markdown] tags=[]
-# ### Symptoms of Mental Illness
-
-# %%
-killings['mental_illness'].unique()
-
-# %% [markdown]
-# Because "Unknown", "Unkown", "Unknown ", and "unknown" all represent the same idea, we need to distill them down to a single category.
-
-# %%
-mental_illness_dict = {"Unkown":"unknown",
-                       "Unknown ":"unknown",
-                       "Unknown":"unknown"}
-
-killings['mental_illness'] = killings['mental_illness'].map(mental_illness_dict).fillna(killings['mental_illness'])
-
-# %% [markdown]
-# ### Geography Type/Zipcode/Street Address
+# #### Geography Type/Zipcode/Street Address
 
 # %%
 killings['geo_type'].unique()
@@ -440,16 +418,13 @@ killings.loc[6933, 'geo_type'] = 'Suburban' # 113901 / 108 = 1055 (Suburban)
 killings.loc[killings['geo_type'].isnull()==True, ['street_address', 'city', 'state', 'zipcode', 'geo_type', 'news_article_link']]
 
 # %%
-killings.loc[1029]
-
-# %%
 killings.loc[528, 'geo_type'] = 'Suburban' # 53925 / 128.4 = 420 (Suburban)
 
 # %%
 killings.loc[774, 'geo_type'] = 'Suburban' # 40035 / 34.11 = 1174 (Suburban)
 
 # %%
-# killings.loc[1029, 'geo_type'] = 'Suburban' # 682 / 3.14 = 217 (Suburban)
+killings.loc[1029, 'geo_type'] = 'Suburban' # 682 / 3.14 = 217 (Suburban)
 
 # %%
 killings.loc[1250, ['street_address', 'zipcode', 'geo_type']] = '500 N Main St', 67124.0, 'Suburban' # 2837 / 7.49 = 379 (Suburban)
@@ -509,102 +484,336 @@ killings.loc[7099, 'geo_type'] = 'Urban' # 870051 / 55.25 = 15748 (Urban)
 killings.loc[7461, 'geo_type'] = 'Suburban' # 8689 / 4.36 = 1993 (Suburban)
 
 # %% [markdown]
-# After going through all the links, we'll replace all null values that remain with None
+# #### Handling location fields that are still Null
+# Since we've done as much as we can in the way of researching location data, we'll replace all null values that remain with 'unknown'
 
 # %%
 num_null_street_address = killings['street_address'].isnull().sum()
-print(F"There are {num_null_street_address} street addresses that will be filled with 'None'")
-killings['street_address'].fillna('None', inplace=True)
+print(F"There are {num_null_street_address} null street addresses that will be filled with 'unknown'")
+killings['street_address'].fillna('unknown', inplace=True)
 
 # %%
-killings.isnull().sum()
+killings.loc[killings['street_address']=='Unknown', 'street_address'] = 'unknown'
 
 # %%
-killings.loc[6933, 'news_article_link']
+num_null_city = killings['city'].isnull().sum()
+print(F"There are {num_null_city} cities that will be filled with 'unknown'")
+
+killings['city'].fillna('unknown', inplace=True)
 
 # %%
-killings.loc[6933]
+# num_null_zip_codes = killings['zipcode'].isnull().sum()
+# print(F"There are {num_null_zip_codes} zip_codes that will be filled with 'unknown'")
+
+# killings['zipcode'].fillna('unknown', inplace=True)
 
 # %%
-killings.loc[7461, 'news_article_link']
+num_null_geo_type = killings['geo_type'].isnull().sum()
+print(F"There are {num_null_geo_type} geo_types that will be filled with 'unknown'")
 
-# %%
-killings.loc[7461]
-
-# %%
-
-# %%
-killings.isnull().sum()
-
-# %%
-killings.loc[killings['official_disposition_of_death'].isnull()==True, 
-             'official_disposition_of_death'] = 'Unknown'
-
-# %%
-killings.isnull().sum()
-
-# %%
-killings.loc[killings['Agency responsible for death'].isnull()==True, 'Agency responsible for death'] = 'Unknown'
-
-# %%
-killings.isnull().sum()
+killings['geo_type'].fillna('unknown', inplace=True)
 
 # %% [markdown]
-# Since we've done as much as we can in the way of researching population densities and manually entering the geo_type.  We'll impute the remaing missing values (only 1 entry) with the mode of that column (Suburban)
+# ### Agency Responsible for death
 
 # %%
-killings['geo_type'].value_counts()
+num_null_agency_responsible = killings['agency_resp_for_death'].isnull().sum()
+print(F"There are {num_null_agency_responsible} rows for agency responsible for death that will be filled with 'unknown'")
 
-# %%
-#killings.loc[killings['geo_type'].isnull() == True, 'geo_type']
-mode = killings['geo_type'].mode()[0]
-# killings.loc[killings['geo_type'].isnull() == True, 'geo_type'] = str(mode)
-# killings.loc[killings['geo_type'].isnull() == True, 'geo_type']
-killings['geo_type'].fillna(mode, inplace=True)
-
-# %%
-killings.isnull().sum()
-
-# %%
-killings.loc[1755]
+killings['agency_resp_for_death'].fillna('unknown', inplace=True)
 
 # %% [markdown]
-# Since row 1755 has so many missing values, contains so little information, and is the one entry remaining with NaN for the city, I'm going to drop it.
+# ### Cause of death
+# There are too many categories here to do a meaningful analysis, I'll distill them down to just a few categories
 
 # %%
-killings.drop(labels=1755, inplace=True)
+killings['cause_of_death'].unique()
 
 # %%
-killings.isnull().sum()
+killings['cause_of_death'] = killings['cause_of_death'].str.lower()
 
 # %%
-killings.loc[killings["victims_age"]=='Unknown', "victims_age"] = np.nan
+cause_of_death_dict = {"gunshot, bean bag gun":"gunshot, beanbag gun",
+                       "tasered":"taser",
+                       "beaten/bludgeoned with instrument":"beaten",
+                       "gunshot, taser":"gunshot",
+                       "gunshot, police dog":"gunshot",
+                       "gunshot, pepper spray":"gunshot",
+                       "gunshot, beanbag gun":"gunshot",
+                       "taser, pepper spray, beaten":"taser",
+                       "taser, physical restraint":"taser",
+                       "gunshot, taser, pepper spray":"gunshot",
+                       "gunshot, stabbed":"gunshot",
+                       "gunshot, vehicle":"gunshot",
+                       "gunshot, taser, baton":"gunshot",
+                       "gunshot, unspecified less lethal weapon":"gunshot",
+                       "gunshot, taser, beanbag shotgun":"gunshot",
+                       "gunshot, taser, beanbag shotgun":"gunshot",
+                       "taser, baton":"taser",
+                       "taser, beaten":"taser",
+                       "bomb":"other",
+                       "baton, pepper spray, physical restraint":"other",
+                       "pepper spray":"other",
+                       "bean bag":"other"}
+
+killings['cause_of_death'] = killings['cause_of_death'].map(cause_of_death_dict).fillna(killings['cause_of_death'])
 
 # %%
-killings['victims_age'].unique()
+killings['cause_of_death'].value_counts()
+
+# %% [markdown]
+# ### Description of Circumstances Surrounding Death
+# It'll take too much time to research these missing entries and I don't think they'll contribute much to analysis, so I'll fill them with "Unavailable"
 
 # %%
-killings.loc[killings["victims_age"]=='40s', "victims_age"] = 40.0
+killings['desc_of_circumstances'].fillna('Unavailable', inplace=True)
+
+# %% [markdown]
+# ### Official Disposition of Death
+
+# %%
+killings['official_disposition_of_death'].unique()
+
+# %% [markdown]
+# There are way too many unique entries in this column, let's reduce the number of categories down
+
+# %%
+# off_disp_dict = {"pending investigaton":"pending investigation",
+#                  "ongoing investigation":"under investigation",
+#                  }
+
+# %%
+num_null_disp_of_death = killings['official_disposition_of_death'].isnull().sum()
+print(F"There are {num_null_disp_of_death} rows for official disposition of death that will be filled with 'unknown'")
+
+killings['official_disposition_of_death'].fillna('unknown', inplace=True)
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unjustified'), 'official_disposition_of_death'] = 'unjustified'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('justified'), 'official_disposition_of_death'] = 'justified'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('convicted'), 'official_disposition_of_death'] = 'convicted'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('acquitted'), 'official_disposition_of_death'] = 'acquitted'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('pending investigation'), 'official_disposition_of_death'] = 'pending investigation'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('pending investigaton'), 'official_disposition_of_death'] = 'pending investigation'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('ongoing investigation'), 'official_disposition_of_death'] = 'under investigation'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('under investigation'), 'official_disposition_of_death'] = 'under investigation'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('no indictment'), 'official_disposition_of_death'] = 'no indictment'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('indicted'), 'official_disposition_of_death'] = 'indicted'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('charged'), 'official_disposition_of_death'] = 'charged'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('No charges'), 'official_disposition_of_death'] = 'no charges'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('no charges'), 'official_disposition_of_death'] = 'no charges'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('no known charges'), 'official_disposition_of_death'] = 'no charges'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unreported'), 'official_disposition_of_death'] = 'unreported'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unknown'), 'official_disposition_of_death'] = 'unknown'
+
+# %%
+killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unknown'), 'official_disposition_of_death'] = 'unknown'
+
+# %%
+killings['official_disposition_of_death'] = killings['official_disposition_of_death'].str.lower()
+
+# %%
+killings['official_disposition_of_death'].value_counts()
+
+# %% [markdown]
+# ### Criminal Charges
+
+# %%
+killings['criminal_charges'].value_counts()
+
+# %%
+killings['criminal_charges'] = killings['criminal_charges'].str.lower()
+
+# %%
+killings.loc[killings['criminal_charges'] == 'no known charges', 'criminal_charges'] = 'no charges'
+killings.loc[killings['criminal_charges'] == 'no', 'criminal_charges'] = 'no charges'
+
+# %%
+killings.loc[killings['criminal_charges'].str.contains('charged, convicted'), 'criminal_charges'] = 'charged, convicted'
+
+# %%
+killings.loc[killings['criminal_charges'].str.contains('charged, mistrial'), 'criminal_charges'] = 'charged, mistrial'
+
+# %%
+killings.loc[killings['criminal_charges'].str.contains('charged, charges tossed'), 'criminal_charges'] = 'charged, charges dropped'
+
+# %%
+killings.loc[killings['criminal_charges'].str.contains('charged with manslaughter'), 'criminal_charges'] = 'charged with a crime'
+
+# %%
+killings['criminal_charges'].value_counts()
+
+# %% [markdown]
+# ### News Article Link
+# It's going to be near impossible to research links for these rows, so we'll also fill them with "Unavailable"
+
+# %%
+killings['news_article_link'].fillna('Unavailable', inplace=True)
+
+# %% [markdown] tags=[]
+# ### Symptoms of Mental Illness
+
+# %%
+killings['mental_illness'].unique()
+
+# %% [markdown]
+# Because "Unknown", "Unkown", "Unknown ", and "unknown" all represent the same idea, we need to distill them down to a single category.
+
+# %%
+killings['mental_illness'] = killings['mental_illness'].str.lower()
+
+# %%
+mental_illness_dict = {"unkown":"unknown",
+                       "unknown ":"unknown"}
+
+killings['mental_illness'] = killings['mental_illness'].map(mental_illness_dict).fillna(killings['mental_illness'])
+
+# %%
+num_null_killings = killings['mental_illness'].isnull().sum()
+print(F"There are {num_null_killings} null rows for mental_illness that will be filled with 'unknown'")
+
+killings['mental_illness'].fillna('unknown', inplace=True)
+
+# %% [markdown]
+# ### Unarmed
+
+# %%
+killings['unarmed'].unique()
+
+# %%
+killings['unarmed'] = killings['unarmed'].str.lower()
+
+# %% [markdown]
+# ### Alleged Weapon - need to do
+
+# %%
+killings['alleged_weapon'].unique()
+
+# %%
+killings['alleged_weapon'] = killings['alleged_weapon'].str.lower()
+
+# %%
+alleged_weapon_dict = {"unclear":"unknown",
+                       "unknown weapon":"unknown",
+                       "undetermined":"unknown",
+                       }
+
+killings['alleged_weapon'] = killings['alleged_weapon'].map(alleged_weapon_dict).fillna(killings['alleged_weapon'])
+
+# %% [markdown]
+# ### Threat Level
+
+# %%
+killings['threat_level'].unique()
+
+# %%
+num_null_threat_level = killings['threat_level'].isnull().sum()
+print(F"There are {num_null_threat_level} rows for threat level that will be filled with 'unknown'")
+
+killings['threat_level'].fillna('unknown', inplace=True)
+
+# %% [markdown]
+# ### Fleeing
+
+# %%
+killings['fleeing'].unique()
+
+# %%
+killings['fleeing'] = killings['fleeing'].str.lower()
+
+killings.loc[killings['fleeing']=='0', 'fleeing'] = 'unknown'
+# fleeing_dict = {'Foot':'foot',
+#                 'Not fleeing':'not fleeing',
+#                 '0':'unknown',
+#                 'Car':'car',
+#                 'Other':'other'}
+
+# killings['fleeing'] = killings['fleeing'].map(fleeing_dict).fillna(killings['fleeing'])
+killings['fleeing'].fillna('unknown', inplace=True)
+
+# %% [markdown]
+# ### Video surveillance
+
+# %%
+killings['video_surveillance'].unique()
+
+# %%
+killings['video_surveillance'] = killings['video_surveillance'].str.lower()
+killings['video_surveillance'] = killings['video_surveillance'].str.replace('yes', 'body camera')
+killings['video_surveillance'].fillna('unknown', inplace=True)
+
+# %% [markdown]
+# ## Converting data types
+
+# %%
+killings.dtypes
+
+# %% [markdown]
+# ### Age
+
+# %%
+killings["victims_age"] = killings["victims_age"].astype('float64')
+
+# %% [markdown]
+# ### Date
+
+# %% [markdown]
+# We can convert the dates in the date column to Python datetime objects
+
+# %%
+killings["date"] = pd.to_datetime(killings["date"], infer_datetime_format=True)
 
 # %%
 killings.dtypes
 
 # %%
-killings["victims_age"] = killings["victims_age"].astype('float64')
 
 # %%
-killings.hist("victims_age")
-plt.show()
 
 # %%
-median_age = round(killings["victims_age"].median())
-killings["victims_age"] = killings["victims_age"].fillna(round(median_age))
+killings.columns
 
 # %%
-killings.isnull().sum()
 
 # %%
-killings.info()
+
+# %%
+killings['unarmed'].unique()
+
+# %%
+killings['alleged_weapon'].unique()
+
+# %%
 
 # %%
 zipcode_null = killings.loc[killings['Zipcode'].isnull()==True,:].index
@@ -614,117 +823,11 @@ killings.drop(zipcode_null,inplace=True)
 killings.isnull().sum()
 
 # %%
-killings['official_disposition_of_death'].value_counts()
-
-# %%
-killings['official_disposition_of_death'].unique()
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unjustified'), 'official_disposition_of_death'] = 'Unjustified'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('justified'), 'official_disposition_of_death'] = 'Justified'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('convicted'), 'official_disposition_of_death'] = 'Convicted'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('acquitted'), 'official_disposition_of_death'] = 'Acquitted'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('charged'), 'official_disposition_of_death'] = 'Charged'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('pending investigation'), 'official_disposition_of_death'] = 'Pending Investigation'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unknown'), 'official_disposition_of_death'] = 'Unknown'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('pending investigaton'), 'official_disposition_of_death'] = 'Pending Investigation'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('ongoing investigation'), 'official_disposition_of_death'] = 'Under Investigation'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unknown'), 'official_disposition_of_death'] = 'Unknown'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('no indictment'), 'official_disposition_of_death'] = 'No indictment'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('No charges'), 'official_disposition_of_death'] = 'No charges'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('unreported'), 'official_disposition_of_death'] = 'Unreported'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('under investigation'), 'official_disposition_of_death'] = 'Under Investigation'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('indicted'), 'official_disposition_of_death'] = 'Indicted'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('no charges'), 'official_disposition_of_death'] = 'No charges'
-
-# %%
-killings.loc[killings['official_disposition_of_death'].str.lower().str.contains('no known charges'), 'official_disposition_of_death'] = 'No charges'
-
-# %%
-killings['official_disposition_of_death'].value_counts()
-
-# %%
 killings.head()
 
 # %%
-killings['criminal_charges'].value_counts()
 
 # %%
-killings.loc[killings['criminal_charges'] == 'No', 'criminal_charges'] = 'No Charges'
-killings.loc[killings['criminal_charges'] == 'NO', 'criminal_charges'] = 'No Charges'
-killings.loc[killings['criminal_charges'] == 'No known charges', 'criminal_charges'] = 'No Charges'
-
-# %%
-killings['criminal_charges'].value_counts()
-
-# %%
-convicted = killings[killings['criminal_charges'].str.lower().str.contains('convicted')]
-for i, index in enumerate(convicted.index):
-    print()
-    print(str(i+1) + '. ' + killings.iloc[index]['desc_of_circumstances'])
-    print(killings.iloc[index]['news_article_link'])
-    print()
-
-# %%
-killings.loc[killings["victims_race"] == 'Unknown race', "victims_race"] = 'Unknown'
-killings.loc[killings["victims_race"] == 'Unknown Race', "victims_race"] = 'Unknown'
-
-# %%
-killings.loc[killings["victims_race"]=='Asian', "victims_race"] = 'Asian/Pacific Islander'
-killings.loc[killings["victims_race"]=='Pacific Islander', "victims_race"] = 'Asian/Pacific Islander'
-
-# %%
-killings["victims_race"].value_counts()
-
-# %%
-killings['victims_name'].value_counts()
-
-# %%
-killings[['First Name', 'Last Name']] = killings['victims_name'].loc[killings['victims_name'].str.split().str.len() == 2].str.split(expand=True)
-
-killings.loc[killings['victims_name'].str.split().str.len() != 2, 'First Name'] = killings['victims_name'].str.split().str[0]
-killings.loc[killings['victims_name'].str.split().str.len() != 2, 'Last Name'] = killings['victims_name'].apply(lambda x: HumanName(x).last)
-# killings.loc[killings['victims_name'].str.split().str.len() != 2, ['First Name', 'Last Name']] = [killings['victims_name'].str.split().str[0], killings['victims_name'].str.split().str[-1]]
-
-killings.loc[killings['victims_name'] == 'Name withheld by police', ['First Name', 'Last Name']] = ['Unknown', 'Unknown']
-
-killings[['First Name', 'Last Name']]
-
-# %%
-killings['First Name'].value_counts()[0:50]
-
-# %%
-killings['Last Name'].value_counts()[0:60]
 
 # %%
 killings.head()
